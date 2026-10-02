@@ -1,0 +1,35 @@
+services:
+  db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: lavado
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-lavado}
+      POSTGRES_DB: lavado
+    volumes:
+      - db-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U lavado']
+      interval: 5s
+      retries: 10
+
+  app:
+    build: .
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgresql://lavado:${POSTGRES_PASSWORD:-lavado}@db:5432/lavado
+      JWT_SECRET: ${JWT_SECRET:?Defina JWT_SECRET}
+      COOKIE_SECURE: ${COOKIE_SECURE:-false}
+      ADMIN_USERNAME: ${ADMIN_USERNAME:-admin}
+      ADMIN_PASSWORD: ${ADMIN_PASSWORD:?Defina ADMIN_PASSWORD}
+    ports:
+      - '${APP_PORT:-4000}:4000'
+    volumes:
+      - uploads:/data/uploads
+
+volumes:
+  db-data:
+  uploads:
