@@ -1,0 +1,357 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum Role {
+  ADMIN
+  SUPERVISOR
+  WORKER
+}
+
+enum Priority {
+  BAJA
+  MEDIA
+  ALTA
+  URGENTE
+}
+
+enum RequirementStatus {
+  PENDIENTE
+  ASIGNADO
+  EN_PROCESO
+  COMPLETADO
+  CANCELADO
+}
+
+enum TaskStatus {
+  PENDIENTE
+  ASIGNADA
+  EN_PROCESO
+  COMPLETADA
+  CANCELADA
+}
+
+enum IncidentStatus {
+  ABIERTA
+  EN_PROCESO
+  SOLUCIONADA
+  CERRADA
+}
+
+enum PhotoType {
+  ANTES
+  DESPUES
+  INCIDENCIA
+  ADICIONAL
+}
+
+enum MovementType {
+  ENTRADA
+  SALIDA
+  AJUSTE
+  LLENADO
+}
+
+model Company {
+  id        Int      @id @default(autoincrement())
+  name      String
+  createdAt DateTime @default(now())
+
+  users        User[]
+  points       WashPoint[]
+  products     Product[]
+  settings     Setting[]
+}
+
+model User {
+  id           Int       @id @default(autoincrement())
+  companyId    Int
+  company      Company   @relation(fields: [companyId], references: [id])
+  name         String
+  username     String    @unique
+  email        String?
+  phone        String?
+  passwordHash String
+  role         Role      @default(WORKER)
+  active       Boolean   @default(true)
+  lastLoginAt  DateTime?
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  points               PointUser[]
+  managedPoints        WashPoint[]         @relation("PointManager")
+  requirementsCreated  Requirement[]       @relation("RequirementCreator")
+  requirementsAssigned Requirement[]       @relation("RequirementAssignee")
+  tasksCreated         Task[]              @relation("TaskCreator")
+  tasksAssigned        Task[]              @relation("TaskAssignee")
+  fillings             Filling[]
+  photos               Photo[]
+  incidentsReported    Incident[]          @relation("IncidentReporter")
+  incidentsAssigned    Incident[]          @relation("IncidentAssignee")
+  movements            InventoryMovement[]
+  notifications        Notification[]
+  auditLogs            AuditLog[]
+}
+
+model WashPoint {
+  id        Int      @id @default(autoincrement())
+  companyId Int
+  company   Company  @relation(fields: [companyId], references: [id])
+  code      String   @unique
+  name      String
+  address   String
+  city      String
+  active    Boolean  @default(true)
+  managerId Int?
+  manager   User?    @relation("PointManager", fields: [managerId], references: [id])
+  notes     String?
+  latitude  Float?
+  longitude Float?
+  qrCode    String?  @unique
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  users        PointUser[]
+  products     PointProduct[]
+  requirements Requirement[]
+  tasks        Task[]
+  fillings     Filling[]
+  photos       Photo[]
+  incidents    Incident[]
+  movements    InventoryMovement[]
+}
+
+model PointUser {
+  pointId   Int
+  userId    Int
+  point     WashPoint @relation(fields: [pointId], references: [id], onDelete: Cascade)
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  createdAt DateTime  @default(now())
+
+  @@id([pointId, userId])
+}
+
+model PointProduct {
+  pointId   Int
+  productId Int
+  point     WashPoint @relation(fields: [pointId], references: [id], onDelete: Cascade)
+  product   Product   @relation(fields: [productId], references: [id], onDelete: Cascade)
+
+  @@id([pointId, productId])
+}
+
+model Product {
+  id           Int      @id @default(autoincrement())
+  companyId    Int
+  company      Company  @relation(fields: [companyId], references: [id])
+  name         String
+  description  String?
+  unit         String   @default("L")
+  currentStock Float    @default(0)
+  minStock     Float    @default(0)
+  active       Boolean  @default(true)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  points       PointProduct[]
+  requirements Requirement[]
+  tasks        Task[]
+  fillings     Filling[]
+  movements    InventoryMovement[]
+
+  @@unique([companyId, name])
+}
+
+model Requirement {
+  id          Int               @id @default(autoincrement())
+  pointId     Int
+  point       WashPoint         @relation(fields: [pointId], references: [id])
+  type        String
+  productId   Int?
+  product     Product?          @relation(fields: [productId], references: [id])
+  description String
+  priority    Priority          @default(MEDIA)
+  status      RequirementStatus @default(PENDIENTE)
+  createdById Int
+  createdBy   User              @relation("RequirementCreator", fields: [createdById], references: [id])
+  assigneeId  Int?
+  assignee    User?             @relation("RequirementAssignee", fields: [assigneeId], references: [id])
+  assignedAt  DateTime?
+  completedAt DateTime?
+  notes       String?
+  createdAt   DateTime          @default(now())
+  updatedAt   DateTime          @updatedAt
+
+  tasks Task[]
+
+  @@index([pointId, status])
+}
+
+model Task {
+  id                Int        @id @default(autoincrement())
+  pointId           Int
+  point             WashPoint  @relation(fields: [pointId], references: [id])
+  requirementId     Int?
+  requirement       Requirement? @relation(fields: [requirementId], references: [id])
+  productId         Int?
+  product           Product?   @relation(fields: [productId], references: [id])
+  type              String
+  description       String
+  priority          Priority   @default(MEDIA)
+  status            TaskStatus @default(PENDIENTE)
+  assigneeId        Int?
+  assignee          User?      @relation("TaskAssignee", fields: [assigneeId], references: [id])
+  createdById       Int
+  createdBy         User       @relation("TaskCreator", fields: [createdById], references: [id])
+  dueDate           DateTime?
+  assignedAt        DateTime?
+  startedAt         DateTime?
+  completedAt       DateTime?
+  notes             String?
+  startLatitude     Float?
+  startLongitude    Float?
+  dueSoonNotifiedAt DateTime?
+  createdAt         DateTime   @default(now())
+  updatedAt         DateTime   @updatedAt
+
+  fillings  Filling[]
+  photos    Photo[]
+  incidents Incident[]
+
+  @@index([pointId, status])
+  @@index([assigneeId, status])
+}
+
+/// Registro de llenado: quantity es SIEMPRE la cantidad realmente llenada.
+model Filling {
+  id        Int       @id @default(autoincrement())
+  pointId   Int
+  point     WashPoint @relation(fields: [pointId], references: [id])
+  productId Int
+  product   Product   @relation(fields: [productId], references: [id])
+  taskId    Int?
+  task      Task?     @relation(fields: [taskId], references: [id])
+  userId    Int
+  user      User      @relation(fields: [userId], references: [id])
+  quantity  Float
+  unit      String
+  filledAt  DateTime  @default(now())
+  notes     String?
+  createdAt DateTime  @default(now())
+
+  photos   Photo[]
+  movement InventoryMovement?
+
+  @@index([pointId, filledAt])
+  @@index([productId, filledAt])
+}
+
+model Photo {
+  id         Int       @id @default(autoincrement())
+  path       String
+  mime       String
+  size       Int
+  type       PhotoType @default(ADICIONAL)
+  caption    String?
+  pointId    Int
+  point      WashPoint @relation(fields: [pointId], references: [id])
+  taskId     Int?
+  task       Task?     @relation(fields: [taskId], references: [id])
+  incidentId Int?
+  incident   Incident? @relation(fields: [incidentId], references: [id])
+  fillingId  Int?
+  filling    Filling?  @relation(fields: [fillingId], references: [id])
+  userId     Int
+  user       User      @relation(fields: [userId], references: [id])
+  takenAt    DateTime  @default(now())
+  createdAt  DateTime  @default(now())
+
+  @@index([pointId, createdAt])
+}
+
+model Incident {
+  id           Int            @id @default(autoincrement())
+  pointId      Int
+  point        WashPoint      @relation(fields: [pointId], references: [id])
+  taskId       Int?
+  task         Task?          @relation(fields: [taskId], references: [id])
+  reportedById Int
+  reportedBy   User           @relation("IncidentReporter", fields: [reportedById], references: [id])
+  type         String
+  description  String
+  priority     Priority       @default(MEDIA)
+  status       IncidentStatus @default(ABIERTA)
+  assigneeId   Int?
+  assignee     User?          @relation("IncidentAssignee", fields: [assigneeId], references: [id])
+  resolvedAt   DateTime?
+  solution     String?
+  closedAt     DateTime?
+  createdAt    DateTime       @default(now())
+  updatedAt    DateTime       @updatedAt
+
+  photos Photo[]
+
+  @@index([pointId, status])
+}
+
+model InventoryMovement {
+  id           Int          @id @default(autoincrement())
+  productId    Int
+  product      Product      @relation(fields: [productId], references: [id])
+  type         MovementType
+  quantity     Float
+  balanceAfter Float
+  userId       Int
+  user         User         @relation(fields: [userId], references: [id])
+  reason       String?
+  pointId      Int?
+  point        WashPoint?   @relation(fields: [pointId], references: [id])
+  fillingId    Int?         @unique
+  filling      Filling?     @relation(fields: [fillingId], references: [id])
+  createdAt    DateTime     @default(now())
+
+  @@index([productId, createdAt])
+}
+
+model Notification {
+  id        Int       @id @default(autoincrement())
+  userId    Int
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  type      String
+  title     String
+  message   String
+  link      String?
+  readAt    DateTime?
+  createdAt DateTime  @default(now())
+
+  @@index([userId, readAt])
+}
+
+model AuditLog {
+  id        Int      @id @default(autoincrement())
+  userId    Int?
+  user      User?    @relation(fields: [userId], references: [id])
+  action    String
+  entity    String
+  entityId  Int?
+  details   Json?
+  ip        String?
+  createdAt DateTime @default(now())
+
+  @@index([entity, entityId])
+  @@index([createdAt])
+}
+
+model Setting {
+  companyId Int
+  company   Company @relation(fields: [companyId], references: [id])
+  key       String
+  value     String
+
+  @@id([companyId, key])
+}
